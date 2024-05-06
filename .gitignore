@@ -1,6 +1,10 @@
 *postgres_data*
 *airflow/logs/*dag*
 *airflow/logs/*scheduler*
+spark/notebooks/spark-warehouse/gold/*
+spark/notebooks/spark-warehouse/silver/*
+spark/notebooks/spark-warehouse/bronze/*
+*.ipynb_checkpoints*
 
 *.pyc
 
