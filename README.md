@@ -4,13 +4,19 @@ Repositório com material para o PDI de engenharia e dados.
 Vamos criar tópicos na medida que lançaremos os novos trabalhos práticos aqui no README junto com todos os arquivos necessários para poderem trabalhar.
 
 - [PDI-engenharia-de-dados](#pdi-engenharia-de-dados)
+- [Airflow](#airflow)
     - [Detalhes sobre a infraestrutura](#detalhes-sobre-a-infraestrutura)
     - [Como usar a infra](#como-usar-a-infra)
   - [Trabalho prático 4 - Orquestração com Airflow e Geração de arquivo Parquet](#trabalho-prático-4---orquestração-com-airflow-e-geração-de-arquivo-parquet)
     - [Entrega](#entrega)
     - [Algumas observações sobre o trabalho](#algumas-observações-sobre-o-trabalho)
     - [Etapas do trabalho](#etapas-do-trabalho)
+- [Spark](#spark)
+  - [como usar a infraestrutura](#como-usar-a-infraestrutura)
+  - [Trabalho prático 5](#trabalho-prático-5)
+  - [Entrega](#entrega-1)
 
+# Airflow
 
 ### Detalhes sobre a infraestrutura 
 Sempre iremos usar, quando necessário, o Docker para rodar a infraestrutura necessária em cada trabalho. A sua instalação é bem simples ([doc](https://docs.docker.com/engine/install/)). Um problema que pode ser recorrente usando docker com algumas ferramentas que vamos precisar é a falta de memória, caso isso ocorra tente aumentar a memoria do seu ambiente docker ([mac](https://docs.docker.com/desktop/settings/mac/), [linux](https://docs.docker.com/desktop/settings/linux/), [Windows](https://docs.docker.com/desktop/settings/windows/)). Caso ainda assim tenha problemas de memoria, envie uma mensagem no canal do Discord que iremos ajudar vocês.
@@ -90,3 +96,38 @@ O formato final da DAG será:
     **a.** Para a primeira dag, vamos pegar a primeira task da etapa 3, que faz a consulta no banco e salva um CSV e a única alteração que vamos fazer é adicionar uma criação de um Dataset no final da execução dessa task.
     **b.** Nessa segunda DAG, vamos executar apenas a segunda task da etapa 3, em que agregamos as informações de vendas por vendedor. A única alteração para essa DAG é que o trigger dela não é um tempo específico, e sim um Dataset criada no tópico **a** desse trabalho. Dessa forma garantimos que sua execução acontece assim que possível (quando o dataset a ser consumido está pronto).
 
+
+# Spark
+
+Para o quinta trabalho prático, vamos focar em aprender a usar o Apache Spark. Nesse trabalho vamos simular a criação de uma pipeline 
+
+## como usar a infraestrutura
+Para facilitar o trabalho, dessa vez teremos apenas um serviço rodando em docker. A infraestrutura é composta apenas de um ambiente com jupyter-lab e Apache Spark instalado.
+ 
+Para usar o ambiente:
+1. Se você está em ambiente Linux ou Mac, você pode usar o makefile que está na raiz do repositório.
+2. Caso esteja em ambiente windows ou não saiba usar o makefile, pode rodar os comandos a partir da raiz do repositório: 
+    ```Bash
+    cd spark
+    docker build -t pyspark-notebook .
+	docker run --cpus="5" -p 8888:8888 -p 4040-4045:4040-4045 \
+		-v ./notebooks:/home/jovyan/notebooks \
+ 		pyspark-notebook
+    ```
+
+3. Após rodar os comandos acima, temos dois portais para interagir a partir do seu browser:
+   1. [jupyter lab](http://127.0.0.1:8888/lab)
+   2. [spark ui](http://localhost:4041)
+
+## Trabalho prático 5
+
+Para esse trabalho, o objetivo é acabar de evoluir o nosso dataset que esta na landing zone até a zone gold. Já existe um script que evolui o dataset para a zone bronze.
+
+A ideia é seguir o seguinte padrão de evolução:
+1. Zona silver: Essa zone padroniza e modela os dados de uma base (como vimos na aula 2) de forma a otimizar o seu consumo. A ideia aqui é deixar a tabela com alguma modelagem de dados para poder facilitar o consumo dos dados apenas necessários (podem usar um star schema ou snowflake). Por isso para a primeira pipeline teremos 1 input (a tabela na zone bronze) e N outputs (as tabelas que vocês acharem necessárias). 
+2. Para a zona gold, o objetivo é trazer algum insight sobre os dados de forma mais pontual. Geralmente esse tipo de pipeline tem algum calculo estatístico do dados (alguma agregação) ou união de dados desatribuídos na zone silver mas com uma periodicidade que faz sentido para o consumo (não precisa de dados de 10 anos para uma analise dos dados por exemplo). 
+
+O objetivo aqui é criar dois notebooks (igual foram criados os exemplos) na pasta notebooks que façam essa evolução para as duas zonas que faltam. Não existe um calculo específico esperado, podem usar da própria criatividade, o importante é entender do que o apache spark é capas e como usar esse framework.
+
+## Entrega
+Como o trabalho 4, o trabalho 5 deve ser entregue por email, com um link para o fork feito do repositório com os notebooks criados.
