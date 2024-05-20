@@ -15,6 +15,12 @@ Vamos criar tópicos na medida que lançaremos os novos trabalhos práticos aqui
   - [como usar a infraestrutura](#como-usar-a-infraestrutura)
   - [Trabalho prático 5](#trabalho-prático-5)
   - [Entrega](#entrega-1)
+- [Flink](#flink)
+  - [Como usar a infra](#como-usar-a-infra-1)
+  - [Trabalho prático 6](#trabalho-prático-6)
+    - [Pipeline 1 - Streaming](#pipeline-1---streaming)
+    - [Pipeline 2 - batch](#pipeline-2---batch)
+  - [Obs](#obs)
 
 # Airflow
 
@@ -131,3 +137,130 @@ O objetivo aqui é criar dois notebooks (igual foram criados os exemplos) na pas
 
 ## Entrega
 Como o trabalho 4, o trabalho 5 deve ser entregue por email, com um link para o fork feito do repositório com os notebooks criados.
+
+
+# Flink
+
+## Como usar a infra
+
+Toda nossa infra será criada a partir do docker compose que está dentro da pasta Flink. Esse docker compose irá criar:
+- Flink : jobmanager e taskmanager 
+- Kafka : zookeeper e Kafka broker e kafka-ui
+- kafka-data-producer
+
+
+Para subir esses serviços só rodar:
+```Bash
+cd flink
+docker compose up -d
+```
+Após rodar esses comandos, podem abrir o docker desktop e ver se todo os serviços listados acima estão rodando.
+
+Dois endpoints estão disponíveis :
+- Kafka-ui: http://localhost:8080
+- Flink jobserver: http://localhost:8081 
+
+O kafka-ui pode ser muito prático para dar uma explorada nos dados durante o desenvolvimento. O Flink Jobserver pode ajudar no monitoramento dos jobs que estão rodando.
+
+Sempre que necessário se conectar em um container, podem usar o seguinte comando (de dentro da pasta flink):
+```Bash
+docker compose exec -it <nome_servico> /bin/bash
+```
+Alterando apenas o `<nome_servico>` pelo nome do serviço que você quer se conectar (o nome fica dentro do docker compose), que são eles:
+- jobmanager
+- taskmanager
+- kafka
+- zookeeper
+
+Os outros não precisam ser acessados.
+
+
+Caso esteja com algum problema de recurso ou travamento, sugiro executor o seguinte comando:
+```Bash
+docker compose down --volumes --remove-orphans
+```
+Isso limpará todos os volumes criados para aliviar o disco interno dos containers.
+
+
+## Trabalho prático 6
+Para o trabalho prático, iremos criar duas pipelines usando Flink.:
+
+Vamos simular um sistema de cobrança de taxa dos motoristas do nosso sistema. No kafka temos 3 tópicos:
+- DriverChange: Associa um motorista a um carro (quando uma mudança acontece) 
+- Fares: Dinheiro recebido pelo motorista pela corrida
+- Rides: A corrida propriamente dito
+
+Para esse trabalho vamos usar apenas o tópico Fares. Nesse tópico temos os seguintes campos:
+```json
+{
+	"rideId": Identificador do motorista,
+	"eventTime": Quando o evento aconteceu,
+	"payMethod": Modo de pagamento,
+	"fare": Valor da corrida,
+	"toll": Valor de qualquer despesa do motirsta na corrida (como pedágio),
+	"tip": Valor da gorjeta
+}
+```
+
+Um exemplo de registro:
+```Json
+{
+	"rideId": 70,
+	"eventTime": "2013-01-01T00:01:37Z",
+	"payMethod": "CSH",
+	"fare": 4.0,
+	"toll": 0.0,
+	"tip": 0.0
+}
+```
+
+Os meios de pagamentos existentes são:
+
+```Java
+public static enum PayMethod {
+    CSH, // Cash
+    CRD, // Credit Card
+    DIS, // Discount
+    NOC, // No Charge
+    UNK  // Unknown
+}
+```
+
+### Pipeline 1 - Streaming
+
+Para a primeira etapa do nosso trabalho, vamos ficar em filtrar e aplicar uma formula matemática sobre os nossos dados de pagamentos. Queremos seguir a seguinte regra:
+
+- Queremos apenas pagamentos do tipo `CSH` ou `CRD` 
+- O valor total da corrida consiste em `fare - toll` (pagamento recebido menos valor gasto na corrida)
+- Para pagamentos em dinheiro (`CSH`), vamos aplicar uma taxa de 10% do valor total.
+- Para pagamentos em cartão (`CRD`), vamos aplicar uma taxa de 15% do valor total. 
+
+Essa regra de negócio precisa ser aplicada sobre os dados recebidos no tópico `Fares` e enviar o resultado em outra fila chamada `FaresCalculated` usando a estratégia de streaming.
+
+O schema resultante deve ser:
+```SQL
+rideId: Bigint,
+tax: Bigint,
+eventTime: String
+```
+
+Aqui como queremos cobrar os nossos motorista por todas as corridas, vamos usar a estratégia `at least once` em que podemos duplicar esses registros mais para frente, então ao criar um source kafka, devemos usar a configuração `.start_from_earliest()` como visto em sala. Vamos resolver esse problema de duplicidade mais para frente.
+
+### Pipeline 2 - batch
+
+No final do dia, queremos gerar um relatório para saber quanto devemos cobrar dos nossos motoristas pelas corrias. A nossa source será o tópico criado na pipeline anterior `FaresCalculated`. Como usamos a garantia de entrega de `at least once`, podemos acabar cobrando dobrado o nosso motorista, por isso precisamos levar isso em consideração no momento de criar a pipelines. A regra de negócio deve seguir esses princípios:
+- Caso um registro tenha o mesmo valor de `eventTime` para o mesmo `rideId`, esse valor deve ser ignorado (isso de certa forma garante o `exactly once` ao remover os duplicados).
+- Queremos somar os valores de `tax` para cada `rideId` e salvar isso em um arquivos csv no seguinte schema:
+```SQL
+rideId: Bigint,
+tax: Bigint,
+```
+
+Em que `rideId` é o identificador do motorista e `tax` o valor agregado dos valores no tópico `FaresCalculated` para aquele motorista. Podem salvar o arquivos csv no caminho `/opt/examples/table/output/tax_aggregated`.
+
+## Obs
+- É permitido usar UDF caso queiram testar para ver como funciona, mas lembre que **NÃO É BOA PRÁTICA** usar UDF se for possível resolver de forma nativa.
+- Aproveitam das interfaces disponíveis para ver os resultados intermediários (por exemplo o kafka-ui para ver o resultado da pipeline 1)
+- Caso queiram controlar a quantidade de registros dos tópicos, podem matar o serviço `kafka-data-producer` rodando o comando `docker kill kafka-data-producer`.
+
+Qualquer dúvida não deixam de perguntar no nosso servidor do Discord. 
