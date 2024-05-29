@@ -1,0 +1,69 @@
+version: '3.8'
+services:
+  jobmanager:
+    image: pyflink/playgrounds:1.13.0-rc2
+    volumes:
+      - ./conf:/opt/flink/conf
+      - ./examples:/opt/examples
+    hostname: "jobmanager"
+    expose:
+      - "6123"
+    ports:
+      - "8081:8081"
+    command: /opt/flink/bin/jobmanager.sh start-foreground
+    environment:
+      - JOB_MANAGER_RPC_ADDRESS=jobmanager
+
+  taskmanager:
+    image: pyflink/playgrounds:1.13.0-rc2
+    volumes:
+      - ./conf:/opt/flink/conf
+      - ./examples:/opt/examples
+    expose:
+      - "6121"
+      - "6122"
+    depends_on:
+      - jobmanager
+    command: /opt/flink/bin/taskmanager.sh start-foreground
+    links:
+      - jobmanager:jobmanager
+    environment:
+      - JOB_MANAGER_RPC_ADDRESS=jobmanager
+      - TASK_MANAGER_NUMBER_OF_TASK_SLOTS=4  # Ajuste conforme necessário
+
+  zookeeper:
+    image: zookeeper:3.7.0
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: wurstmeister/kafka:2.13-2.8.1
+    ports:
+      - "9092:9092"
+    depends_on:
+      - zookeeper
+    environment:
+      HOSTNAME_COMMAND: "route -n | awk '/UG[ \t]/{print $$2}'"
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_CREATE_TOPICS: "Rides:1:1, Fares:1:1, DriverChanges:1:1, TempResults:1:1"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  kafka-data-producer:
+    image: fhueske/flink-sql-training:1-FLINK-1.9-scala_2.11
+    command: "java -classpath /opt/data/data-producer.jar com.ververica.sql_training.data_producer.TaxiRecordProducer --input file /opt/data --output kafka kafka:9092 --speedup 10.0"
+    depends_on:
+      - kafka
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    depends_on:
+      - kafka
+      - zookeeper
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: "local"
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "kafka:9092"
+      KAFKA_CLUSTERS_0_ZOOKEEPER: "zookeeper:2181"
+      KAFKA_CLUSTERS_0_READONLY: "false"
